@@ -4,21 +4,60 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
+#include <FFat.h>
+
+// 파일시스템 선택 (true: SPIFFS, false: FFat)
+const bool USE_SPIFFS = true;
 
 const char* ssid = "your_ssid";
 const char* password = "your_password";
 const char* serverAddress = "http://your-server-address.com:8080"; // 서버 주소
-const char* VERSION_FILE = "/version.txt"; // SPIFFS에 저장될 버전 파일
+const char* VERSION_FILE = "/version.txt"; // 버전 파일
 float CURRENT_VERSION = 1.0; // 현재 펌웨어 버전 (초기값)
 
-// 버전 정보를 SPIFFS에 저장
+// 파일시스템 초기화
+bool initFileSystem() {
+    if (USE_SPIFFS) {
+        if (!SPIFFS.begin(true)) {
+            Serial.println("SPIFFS 마운트 실패");
+            return false;
+        }
+        Serial.println("SPIFFS 마운트 성공");
+    } else {
+        if (!FFat.begin()) {
+            Serial.println("FFat 마운트 실패");
+            return false;
+        }
+        Serial.println("FFat 마운트 성공");
+    }
+    return true;
+}
+
+// 파일 열기 래퍼 함수
+File openFile(const char* path, const char* mode) {
+    if (USE_SPIFFS) {
+        return SPIFFS.open(path, mode);
+    } else {
+        return FFat.open(path, mode);
+    }
+}
+
+// 파일 존재 여부 확인 래퍼 함수
+bool fileExists(const char* path) {
+    if (USE_SPIFFS) {
+        return SPIFFS.exists(path);
+    } else {
+        return FFat.exists(path);
+    }
+}
+
+// 버전 정보를 파일시스템에 저장
 void saveVersion(float version) {
-    if (!SPIFFS.begin(true)) {
-        Serial.println("SPIFFS 마운트 실패");
+    if (!initFileSystem()) {
         return;
     }
     
-    File file = SPIFFS.open(VERSION_FILE, "w");
+    File file = openFile(VERSION_FILE, "w");
     if (!file) {
         Serial.println("버전 파일 열기 실패");
         return;
@@ -31,18 +70,17 @@ void saveVersion(float version) {
 
 // 저장된 버전 정보 읽기
 float loadVersion() {
-    if (!SPIFFS.begin(true)) {
-        Serial.println("SPIFFS 마운트 실패");
+    if (!initFileSystem()) {
         return CURRENT_VERSION;
     }
     
-    if (!SPIFFS.exists(VERSION_FILE)) {
+    if (!fileExists(VERSION_FILE)) {
         Serial.println("저장된 버전 정보 없음, 초기 버전 사용");
         saveVersion(CURRENT_VERSION); // 초기 버전 저장
         return CURRENT_VERSION;
     }
     
-    File file = SPIFFS.open(VERSION_FILE, "r");
+    File file = openFile(VERSION_FILE, "r");
     if (!file) {
         Serial.println("버전 파일 열기 실패");
         return CURRENT_VERSION;
